@@ -4,7 +4,7 @@
 
                 org $0100
 
-usenmi:         equ 1                   ; whether to use NMI or IRQ
+usenmi:         equ 0                   ; whether to use NMI or IRQ
 
 im1vect:        equ $38                 ; location of IM1 vector
 nmivect:        equ $66                 ; location of NMI vector
@@ -12,31 +12,10 @@ frameticks:     equ 3                   ; number of interrupts per animation fra
 framecount:     equ 12                  ; number of frames in animation
 bdos:           equ 5
 
-        jp      start
-
-music:
-                ; change incbin to binary for z88dk
-                incbin  "nyan/music.bin"     ; music data
-
-; Change included binary for different cat
-animation:
-                ; change incbin to binary for z88dk
-                incbin  "nyan/nyan.bin"      ; The Classic
-                ;incbin "nyan/nyands.bin"    ; Skrillex?
-                ;incbin "nyan/nyanfi.bin"    ; Finland
-                ;incbin "nyan/nyangb.bin"    ; Gameboy
-                ;incbin "nyan/nyanlb.bin"    ; France
-                ;incbin "nyan/nyann1.bin"    ; France
-                ;incbin "nyan/nyann2.bin"    ; Hmm... France, and cheese, ...and bananas?
-                ;incbin "nyan/nyanus.bin"    ; USA
-                ;incbin "nyan/nyanxx.bin"    ; Party Hat
-
-                include "arkos.asm"     ; Arkos player
-                include "tms.asm"       ; TMS graphics routines
-
 start:
-        ld      (oldstack),sp
-	ld      sp, stack
+	LD	HL, (6)			; TOP OF TPA
+	LD	SP, HL			; MAKE THAT THE STACK
+
         ld      de, music               ; initialize player
         call    PLY_Init
         ld      a, frameticks           ; initialize interrupt counter to frame length
@@ -52,15 +31,23 @@ endif
         call    tmsbackground
         call    tmsintenable            ; enable interrupts on TMS
 mainloop:
+        ld      a, 1
+        ld      (syncready),a
+waitloop:
         halt
-        ld      c,6                     ; check for keypress
-        ld      e,0ffh
-        call    bdos
+        ld      a, (syncready)
         or      a
-        jr      z,mainloop              ; busy wait and let interrupts do their thing
-        call    tmsintdisable
-        ld      sp,(oldstack)
+        jr      nz, waitloop
+        call    drawframe
+
+        ld      c,$6                            ; check for char at console
+        ld      e,0FFh
+        call    bdos
+        cp      65
+
+        jr      nz, mainloop                ; busy wait and let interrupts do their thing
         rst     0
+
 
 ; set up interrupt mode 1 vector
 ;       HL = interrupt handler
@@ -84,19 +71,17 @@ nmisetup:
 ; interrupt handler: rotate animation frames
 inthandler:
         push    af
-        push    bc
-        push    de
-        push    hl
-        call    PLY_Play                ; play one piece of song
-        call    drawframe               ; draw next frame, if it's time
+	di
+        ld      a, 0
+        ld      (syncready), a
         in      a, (tmsreg)             ; clear interrupt flag
-        pop     hl
-        pop     de
-        pop     bc
-        pop     af
+	pop	af
+        ei
+
 if      usenmi
         retn
 else
+
         reti
 endif
 
@@ -104,6 +89,9 @@ tickcounter:
         defb    0                       ; interrupt down counter
 currframe:
         defb    0                       ; current frame of animation
+
+syncready:
+        defb    0
 
 ; draw a single animation frame
 ;       HL = animation data base address
@@ -138,7 +126,25 @@ framewait:
         ld      hl, tickcounter          ; not time to switch animation frames yet
         dec     (hl)                    ; decrement down counter
         ret
-oldstack:
-        defw 0                
-        defs 64
-stack:
+
+	include "arkos.asm"     ; Arkos player
+	include "tms.asm"       ; TMS graphics routines
+
+
+; Change included binary for different cat
+animation:
+                ; change incbin to binary for z88dk
+                BINARY  "nyan/nyan.bin"      ; The Classic
+                ;incbin "nyan/nyands.bin"    ; Skrillex?
+                ;incbin "nyan/nyanfi.bin"    ; Finland
+                ;incbin "nyan/nyangb.bin"    ; Gameboy
+                ;incbin "nyan/nyanlb.bin"    ; France
+                ;incbin "nyan/nyann1.bin"    ; France
+                ;incbin "nyan/nyann2.bin"    ; Hmm... France, and cheese, ...and bananas?
+                ;incbin "nyan/nyanus.bin"    ; USA
+                ;incbin "nyan/nyanxx.bin"    ; Party Hat
+
+
+music:
+                ; change incbin to binary for z88dk
+                BINARY  "nyan/music.bin"     ; music data
